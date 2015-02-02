@@ -10,8 +10,10 @@
 # RStudio files
 .Rproj.user/
 
+# Census data files
+dist.*
 
-#Temp files
+# Temp files
 *.swp
 *.swo
 *~
