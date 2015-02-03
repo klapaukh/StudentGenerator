@@ -71,5 +71,27 @@ students = data.table(male = replicate(numStudents, runif(1,0,1) < pMale)) %>%
                 email = paste0(firstName,".",lastName,"@podunk.edu")
                 )
 
- 
+#Generate some courses
+meanCoursesPerMajorPerYear = 3 
+semesters = 1:2
+meanAssignments = 7
+meanTests = 1
+
+makeCourses <- function(year, courseMajors){
+lapply(courseMajors, function(x) {
+       numCourses = rpois(1,meanCoursesPerMajorPerYear)
+       if(numCourses == 0)  return(NULL)
+       courses = data.table(courseNumber = (year* 100) + 1:numCourses,
+                            course = x, 
+                            title = "AAA",
+                            trimester = sample(semesters, numCourses, replace = T),
+                            numberAssignments = rpois(1, meanAssignments),
+                            numberTests = rpois(1, meanTests)
+                            )
+                }) %>% 
+rbindlist
+}
+
+courses = lapply(1:3, function(year) makeCourses(year, courseMajors)) %>% rbindlist
+
 
