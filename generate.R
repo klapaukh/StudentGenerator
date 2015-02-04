@@ -241,21 +241,21 @@ return(assignmentsTaken)
 # Now we need to work out final grades for each student
 
 asGrade <- function(mark){
-  if(is.na(mark)) return(as.character(NA))
- if(mark>=90) return("A+")
- if(mark>=85) return("A")
- if(mark>=80) return("A-")
+  if(is.na(mark)) return(as.numeric(NA))
+ if(mark>=90) return(95)
+ if(mark>=85) return(87)
+ if(mark>=80) return(82)
 
- if(mark>=75) return("B+")
- if(mark>=70) return("B")
- if(mark>=65) return("B-")
+ if(mark>=75) return(77)
+ if(mark>=70) return(72)
+ if(mark>=65) return(67)
 
- if(mark>=60) return("C+")
- if(mark>=55) return("C")
- if(mark>=50) return("C-") 
+ if(mark>=60) return(62)
+ if(mark>=55) return(57)
+ if(mark>=50) return(52) 
 
- if(mark>=30) return("D")
- return("E")
+ if(mark>=30) return(45)
+ return(20)
 }
 
 finalMarks = assessmentMarks %>%
@@ -286,7 +286,7 @@ dbTableStudent = students %>%
         summarise(FirstName = titleCase(firstName),
                LastName = titleCase(lastName),
                Exclude = FALSE, 
-               Commment = NA,
+               Comment = NA,
                EmailAddress = email,
                Major = major)
 
@@ -336,11 +336,76 @@ dbTableResult = assessmentMarks %>%
         mutate(Result = ifelse(mark < FailMark,"F","P"),
                Mark = mark) %>%
         select(studentID, Mark,Result,AssessmentID) %>%
-        filter(!is.na(Mark)) %>%
+        filter(!is.na(Mark))
+
+dbTableResult = finalMarks %>%
+        mutate(AssessmentTitle = "Final",
+               CRN = toCRN(Year,baseCRN),
+              Mark = final 
+               ) %>%
+        merge(dbTableAssessment, by=c("AssessmentTitle","CRN")) %>%
+        mutate(Result =  ifelse(final < FailMark,"F","P")) %>%
+        select(Mark,Result,studentID,AssessmentID) %>%
+        rbind(dbTableResult, use.names=TRUE) %>%
         mutate(ResultID = 1:length(Mark)) 
 
-write.csv(dbTableCourse, file="course.txt")
-write.csv(dbTableStudent, file="student.txt")
-write.csv(dbTableClassList, file="classlist.txt")
-write.csv(dbTableResult, file="result.txt")
-write.csv(dbTableAssessment, file="assessment.txt")
+
+
+sink("sqlCommands.txt")       
+
+#Write out the course table
+
+apply(dbTableCourse, 1, function(row){
+         sprintf("INSERT INTO Course (CRN,Title,Year,Trimester) VALUES (%s,\"%s\",%s,%s);\n", 
+                 row[["CRN"]], 
+                 row[["Title"]],
+                 row[["Year"]],
+                 row[["Trimester"]])
+        }) %>% cat
+
+apply(dbTableStudent,1, function(row){
+         sprintf("INSERT INTO Student (StudentID,FirstName,LastName,Exclude,Comment,EmailAddress,Major) VALUES (%s,\"%s\",\"%s\",%s,\"%s\",\"%s\",\"%s\");\n", 
+                 row[["studentID"]], 
+                 row[["FirstName"]],
+                 row[["LastName"]],
+                 ifelse(row[["Exclude"]]==TRUE,1,0),
+                 row[["Comment"]],
+                 row[["EmailAddress"]],
+                 row[["Major"]])
+        }) %>% cat
+
+apply(dbTableClassList, 1, function(row){
+         sprintf("INSERT INTO ClassList (StudentID,CRN,ClassListID,Withdrawn,RepeatSatus) VALUES (%s,%s,%s,%s,%s);\n", 
+                 row[["studentID"]], 
+                 row[["CRN"]],
+                 row[["ClassListID"]],
+                 ifelse(row[["Withdrawn"]]==TRUE,1,0) ,
+                 ifelse(row[["RepeatStatus"]] == TRUE, 1,0)                 
+                 )
+        }) %>% cat
+
+
+apply(dbTableResult, 1, function(row){
+         sprintf("INSERT INTO Result (StudentID,AssessmentID,ResultID,Result,Mark) VALUES (%s,%s,%s,\"%s\",%s);\n", 
+                 row[["studentID"]], 
+                 row[["AssessmentID"]],
+                 row[["ResultID"]],
+                 row[["Result"]],
+                 round(as.numeric(row[["Mark"]]),0)                 
+                 )
+        }) %>% cat
+
+
+apply(dbTableAssessment, 1, function(row) {
+         sprintf("INSERT INTO Assessment (AssessmentID,AssessmentTitle,Date,Weight,Mandatory,MarginalMark,MaxMark,FailMark) VALUES (%s,\"%s\",%s,%s,%s,%s,%s,%s);\n", 
+                 row[["AssessmentID"]], 
+                 row[["AssessmentTitle"]],
+                 row[["Date"]],
+                 row[["Weight"]],
+                 ifelse(row[["Mandatory"]]==TRUE,1,0),
+                 row[["MarginalMark"]],
+                 row[["MaxMarks"]],
+                 row[["FailMark"]])
+        }) %>% cat
+
+sink()
