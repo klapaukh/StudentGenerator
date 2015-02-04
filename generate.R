@@ -95,3 +95,69 @@ rbindlist
 courses = lapply(1:3, function(year) makeCourses(year, courseMajors)) %>% rbindlist
 
 
+# These courses have assignments, tests and exams. All have a 40% or more exam. 
+
+assignments = apply(courses, 1, function(course){
+ courseNumber = course[["courseNumber"]]
+ courseMajor = course[["course"]]
+ trimester = course[["trimester"]]
+ as = course[["numberAssignments"]] %>% as.integer
+ tests = course[["numberTests"]] %>% as.integer
+ exams = 1
+
+ availableMarks = 60 # Each course grade is comprised from 100% 
+ examMarks = 40          #of these at least 40% are reserved for the exam
+
+ #then we reserve at least 1% for each assignment
+ availableMarks = availableMarks - as
+
+ meanTestWeight = 15 #A good test can be worth some 15% or so.
+ meanAssWeight = 8
+
+
+ failCount = 0
+ maxFails = 10 #give up on the randomness
+ #Some of these remaining marks are distributed amoung the tests.
+ testMarks = rep(100, tests)    #Initial marks distribution is obviously crazy
+ while(sum(testMarks) > availableMarks & failCount < maxFails){
+    testMarks = rpois(tests, meanTestWeight)   
+    failCount = failCount + 1
+ }
+
+ if(sum(testMarks) > availableMarks) testMarks = rep(1,tests)
+
+ availableMarks = availableMarks + as - sum(testMarks)  # return the reserved assignment marks and remove the test marks
+
+
+ failCount = 0
+ assMarks = rep(100,as)
+ while(sum(assMarks) > availableMarks & failCount < maxFails){
+   assMarks = rpois(as,meanAssWeight)
+   failCount = failCount + 1
+ }
+
+ if(sum(assMarks) > availableMarks) assMarks = rep(1,as)
+
+ availableMarks = availableMarks - sum(assMarks)  #Remove assignment marks form avaliable
+
+ examMarks = examMarks + availableMarks  #All the remaining marks go the the exams
+
+
+ #Create the assessment names
+ assNames = NULL
+ testNames = NULL
+ examName = "exam"
+ 
+ if(as > 0)    assNames  = sapply(1:as,    function(x) paste("Assignment",x))
+ if(tests > 0) testNames = sapply(1:tests, function(x) paste("Test"      ,x))
+
+ #Now we need to create the data.table which contains this information. 
+ data.table(
+            courseMajor = courseMajor,
+            couseNumber = courseNumber,
+            assessment = c(assNames, testNames, examName),
+            marks = c(assMarks,testMarks, examMarks)
+            )
+                }) %>% 
+rbindlist
+
