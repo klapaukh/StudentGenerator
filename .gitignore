@@ -13,6 +13,9 @@
 # Census data files
 dist.*
 
+#generated files
+*.txt
+
 # Temp files
 *.swp
 *.swo
