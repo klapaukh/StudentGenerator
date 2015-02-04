@@ -4,6 +4,7 @@
 library(data.table)
 library(dplyr)
 library(magrittr)
+library(truncnorm)
 
 #The data files don't have colum names, but this is what they should be 
 #Column names and data from http://www.census.gov/topics/population/genealogy/data/1990_census/1990_census_namefiles.html
@@ -62,7 +63,8 @@ students = data.table(male = replicate(numStudents, runif(1,0,1) < pMale)) %>%
                year = ryear(length(male)),
                id = 300000000 + 1:length(male),
                startYear = sample(startYear,length(male),replace=T),
-               major = sample(studentMajors,length(male),replace=T)
+               major = sample(studentMajors,length(male),replace=T),
+               ability = rtruncnorm(n = length(male), a = 0)   #Each student has an inherent acadmic ability
                 ) %>%
         rowwise %>%
         mutate(
@@ -82,14 +84,16 @@ lapply(courseMajors, function(x) {
        numCourses = rpois(1,meanCoursesPerMajorPerYear)
        if(numCourses == 0)  return(NULL)
        courses = data.table(courseNumber = (year* 100) + 1:numCourses,
+                            year = year,
                             course = x, 
                             title = "AAA",
                             trimester = sample(semesters, numCourses, replace = T),
                             numberAssignments = rpois(1, meanAssignments),
                             numberTests = rpois(1, meanTests)
-                            )
+                            ) %>% mutate(courseCode = paste0(course,courseNumber))
+
                 }) %>% 
-rbindlist
+                rbindlist
 }
 
 courses = lapply(1:3, function(year) makeCourses(year, courseMajors)) %>% rbindlist
@@ -98,8 +102,7 @@ courses = lapply(1:3, function(year) makeCourses(year, courseMajors)) %>% rbindl
 # These courses have assignments, tests and exams. All have a 40% or more exam. 
 
 assignments = apply(courses, 1, function(course){
- courseNumber = course[["courseNumber"]]
- courseMajor = course[["course"]]
+ courseCode = course[["courseCode"]]
  trimester = course[["trimester"]]
  as = course[["numberAssignments"]] %>% as.integer
  tests = course[["numberTests"]] %>% as.integer
@@ -153,11 +156,53 @@ assignments = apply(courses, 1, function(course){
 
  #Now we need to create the data.table which contains this information. 
  data.table(
-            courseMajor = courseMajor,
-            couseNumber = courseNumber,
+            courseCode = courseCode,
             assessment = c(assNames, testNames, examName),
-            marks = c(assMarks,testMarks, examMarks)
+            marks = c(assMarks,testMarks, examMarks),
+            difficulties = rtruncnorm(as+tests+1, 0)
             )
                 }) %>% 
 rbindlist
+
+#Students enrol in courses and sit assessments
+
+#This function computes a students score for an assement
+sitAssessment <- function(skill, difficulty){
+      e = exp(skill - difficulty)
+      pRasch =  e / (1 + e)
+      rtruncnorm(length(difficulty), 0, 100, pRasch * 100, 15)
+}
+
+
+# Each students sits some number of courses
+
+assessmentMarks = apply(students, 1, function(student,courses,assignments){
+ skill = student[["ability"]] %>% as.numeric
+ id = student[["id"]] %>% as.numeric
+ yearLevel = student[["year"]] %>% as.numeric
+ startYear = student[["startYear"]] %>% as.numeric
+
+
+
+ #Each student only does a subset of the courses, and only up to their current year level 
+ coursesTaken = courses %>% 
+        filter(year <= yearLevel) %>%
+        group_by(year) %>%
+        do(sample_n(.,rbinom(1,8,0.9))) %>%
+        `[[`("courseCode")
+
+ 
+ assignmentsTaken = assignments %>%
+        filter(courseCode %in% coursesTaken) %>%
+        mutate(mark = sitAssessment(skill, difficulties),
+               student = id              
+               )
+
+return(assignmentsTaken)
+
+}, courses,assignments) %>% rbindlist
+
+
+
+
 
