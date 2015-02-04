@@ -96,13 +96,17 @@ lapply(courseMajors, function(x) {
                 rbindlist
 }
 
-courses = lapply(1:3, function(year) makeCourses(year, courseMajors)) %>% rbindlist
+courses = lapply(1:3, function(year) makeCourses(year, courseMajors)) %>% 
+        rbindlist %>%
+        mutate(baseCRN = 1:length(course))
 
 
 # These courses have assignments, tests and exams. All have a 40% or more exam. 
 
 assignments = apply(courses, 1, function(course){
  courseCode = course[["courseCode"]]
+ baseCRN = course[["baseCRN"]]
+ yearLevel = course[["yearLevel"]]
  trimester = course[["trimester"]]
  as = course[["numberAssignments"]] %>% as.integer
  tests = course[["numberTests"]] %>% as.integer
@@ -157,6 +161,8 @@ assignments = apply(courses, 1, function(course){
  #Now we need to create the data.table which contains this information. 
  data.table(
             courseCode = courseCode,
+            yearLevel = yearLevel,
+            baseCRN = baseCRN,
             assessment = c(assNames, testNames, examName),
             marks = c(assMarks,testMarks, examMarks),
             difficulties = rtruncnorm(as+tests+1, 0)
@@ -195,18 +201,25 @@ assessmentMarks = apply(students, 1, function(student,courses,assignments){
  assignmentsTaken = assignments %>%
         filter(courseCode %in% coursesTaken) %>%
         mutate(mark = sitAssessment(skill, difficulties),
-               studentID = id              
+               studentID = id,
+               yearTaken = as.integer(yearLevel) + startYear - 1,
+               CRN = paste0(yearTaken - 2000, baseCRN)
                )
 
 return(assignmentsTaken)
 
-}, courses,assignments) %>% rbindlist
+}, courses,assignments) %>% 
+        rbindlist %>%
+        filter(yearTaken <= 2015) %>%
+        mutate(mark = ifelse(yearTaken == 2015, as.numeric(NA), mark))
+
 
 
 
 # Now we need to work out final grades for each student
 
 asGrade <- function(mark){
+  if(is.na(mark)) return(as.character(NA))
  if(mark>=90) return("A+")
  if(mark>=85) return("A")
  if(mark>=80) return("A-")
@@ -226,6 +239,5 @@ asGrade <- function(mark){
 finalMarks = assessmentMarks %>%
         group_by(courseCode, studentID) %>% 
         summarise(final = asGrade(sum(mark * marks/ 100)))
-
 
 
