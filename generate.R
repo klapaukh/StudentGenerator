@@ -5,6 +5,16 @@ library(data.table)
 library(dplyr)
 library(magrittr)
 library(truncnorm)
+library(lubridate)
+
+#When does stuff happen        
+getDate <- function(year,offset){
+        marchDays = paste(year,3,1:31,sep="-") %>% as.POSIXct
+        startofT1 = marchDays[marchDays %>% weekdays %>% `==`("Monday")][1]
+        startofT1 + (as.numeric(offset) * 60*60*24) # add days
+}
+
+toCRN <- function(year, baseCRN) paste0(year - 2000, as.integer(baseCRN))
 
 #The data files don't have colum names, but this is what they should be 
 #Column names and data from http://www.census.gov/topics/population/genealogy/data/1990_census/1990_census_namefiles.html
@@ -63,7 +73,7 @@ students = data.table(male = replicate(numStudents, runif(1,0,1) < pMale)) %>%
                yearGroup = ryear(length(male)),
                studentID = 300000000 + 1:length(male),
                startYear = sample(startYear,length(male),replace=T),
-               major = min(sample(studentMajors,length(male),replace=T),2011+yearGroup),
+               major = sample(studentMajors,length(male),replace=T),
                ability = rtruncnorm(n = length(male), a = 0)   #Each student has an inherent acadmic ability
                 ) %>%
         rowwise %>%
@@ -98,6 +108,7 @@ lapply(courseMajors, function(x) {
 
 courses = lapply(1:3, function(year) makeCourses(year, courseMajors)) %>% 
         rbindlist %>%
+
         mutate(baseCRN = 1:length(course))
 
 
@@ -154,16 +165,21 @@ assignments = apply(courses, 1, function(course){
  assNames = NULL
  testNames = NULL
  examName = "exam"
- 
+
  if(as > 0)    assNames  = sapply(1:as,    function(x) paste("Assignment",x))
  if(tests > 0) testNames = sapply(1:tests, function(x) paste("Test"      ,x))
 
+ #Create the assessment times
+ internalTimes = runif(as + tests, 0,14 * 7) %>% sort  #Any where in the teaching weeks
+ examTime = 14 * 7 + runif(1,0,4*7) #Sometime in the exam period
+ 
  #Now we need to create the data.table which contains this information. 
  data.table(
             courseCode = courseCode,
             yearLevel = yearLevel,
             baseCRN = baseCRN,
             assessment = c(assNames, testNames, examName),
+            times = c(internalTimes,examTime) + ifelse(trimester ==2, 20*7,0), #add offset for T2 start 
             marks = c(assMarks,testMarks, examMarks),
             difficulties = rtruncnorm(as+tests+1, 0)
             )
@@ -194,7 +210,7 @@ assessmentMarks = apply(students, 1, function(student,courses,assignments){
  coursesTaken = courses %>% 
         filter(yearLevel <= yearGroup) %>%
         group_by(yearLevel) %>%
-        do(sample_n(.,rbinom(1,8,0.9))) %>%
+        do(sample_n(.,rbinom(1,min(8,length(courseCode)),0.9))) %>%
         `[[`("courseCode")
 
  
@@ -203,7 +219,7 @@ assessmentMarks = apply(students, 1, function(student,courses,assignments){
         mutate(mark = sitAssessment(skill, difficulties),
                studentID = id,
                yearTaken = as.integer(yearLevel) + startYear - 1,
-               CRN = paste0(yearTaken - 2000, baseCRN)
+               CRN = toCRN(yearTaken,baseCRN)
                )
 
 return(assignmentsTaken)
@@ -238,6 +254,87 @@ asGrade <- function(mark){
 
 finalMarks = assessmentMarks %>%
         group_by(courseCode, studentID) %>% 
-        summarise(final = asGrade(sum(mark * marks/ 100)))
+        summarise(final = asGrade(sum(mark * marks/ 100)), Year = yearTaken) %>%
+        merge(courses,by="courseCode") %>%
+        mutate(Date = getDate(Year, ifelse(trimester == 1, 20*7,38*7)))
 
 
+
+##### Formatting to match database 
+titleCase <- function(s) paste(toupper(substring(s, 1, 1)), tolower(substring(s, 2)), sep = "")
+
+
+#Table 1: Course
+
+dbTableCourse = assessmentMarks %>%
+        unique(by=c("CRN")) %>%
+        merge(courses, by=c("courseCode")) %>%
+        mutate(Title= courseCode, 
+               Year = yearTaken) %>%
+        mutate(Trimester = trimester) %>%
+        select(CRN,Title,Year,Trimester)
+
+#Table 2: Students        
+dbTableStudent = students %>%
+        group_by(studentID) %>%
+        summarise(FirstName = titleCase(firstName),
+               LastName = titleCase(lastName),
+               Exclude = FALSE, 
+               Commment = NA,
+               EmailAddress = email,
+               Major = major)
+
+#Table 3: Class List
+dbTableClassList = assessmentMarks %>% 
+        select(CRN, studentID) %>% 
+        unique(by =c("CRN","studentID")) %>%
+        mutate(RepeatStatus = FALSE, 
+               Withdrawn = runif(length(CRN), 0 ,1) < 0.01, #Widthraw 1% of students from their courses
+               ClassListID = 1:length(CRN)
+        )
+
+#Table 4: Assessment
+dbTableAssessment = assessmentMarks %>% 
+        group_by(CRN,assessment) %>%
+        summarise(AssessmentTitle = unique(assessment), 
+               Date = unique(getDate(yearTaken,times)),
+               Weight = unique(marks),
+               MaxMarks = 100,
+               FailMark = 50,
+               MarginalMark = 60,
+               Mandatory = runif(1,0,1) < 0.2 #20% of assignments are mandatory
+               ) %>%
+        ungroup %>%
+        select(-assessment)
+        
+dbTableAssessment = finalMarks %>%
+        group_by(courseCode,Year) %>%
+        summarise(AssessmentTitle = "Final",
+               Mandatory = FALSE,
+               MaxMarks = 100,
+               FailMark = 50,
+               MarginalMark = 60,
+               Weight = 100,
+               CRN =  unique(toCRN(Year,baseCRN)),
+               Date = unique(Date)
+               ) %>%
+        ungroup %>%
+        select(-courseCode, -Year) %>%
+        rbind(dbTableAssessment,use.names=TRUE) %>%
+        mutate(AssessmentID= 1:length(Weight))
+
+#Table 5: Result
+dbTableResult = assessmentMarks %>%
+        mutate(AssessmentTitle = assessment) %>%
+        merge(dbTableAssessment, by=c("CRN","AssessmentTitle")) %>%
+        mutate(Result = ifelse(mark < FailMark,"F","P"),
+               Mark = mark) %>%
+        select(studentID, Mark,Result,AssessmentID) %>%
+        filter(!is.na(Mark)) %>%
+        mutate(ResultID = 1:length(Mark)) 
+
+write.csv(dbTableCourse, file="course.txt")
+write.csv(dbTableStudent, file="student.txt")
+write.csv(dbTableClassList, file="classlist.txt")
+write.csv(dbTableResult, file="result.txt")
+write.csv(dbTableAssessment, file="assessment.txt")
