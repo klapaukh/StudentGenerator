@@ -61,7 +61,7 @@ startYear = 2011:2014  #Our fake students are recent
 students = data.table(male = replicate(numStudents, runif(1,0,1) < pMale)) %>%
         mutate(
                year = ryear(length(male)),
-               id = 300000000 + 1:length(male),
+               student = 300000000 + 1:length(male),
                startYear = sample(startYear,length(male),replace=T),
                major = sample(studentMajors,length(male),replace=T),
                ability = rtruncnorm(n = length(male), a = 0)   #Each student has an inherent acadmic ability
@@ -178,7 +178,7 @@ sitAssessment <- function(skill, difficulty){
 
 assessmentMarks = apply(students, 1, function(student,courses,assignments){
  skill = student[["ability"]] %>% as.numeric
- id = student[["id"]] %>% as.numeric
+ id = student[["student"]] %>% as.numeric
  yearLevel = student[["year"]] %>% as.numeric
  startYear = student[["startYear"]] %>% as.numeric
 
@@ -203,6 +203,29 @@ return(assignmentsTaken)
 }, courses,assignments) %>% rbindlist
 
 
+
+# Now we need to work out final grades for each student
+
+asGrade <- function(mark){
+ if(mark>=90) return("A+")
+ if(mark>=85) return("A")
+ if(mark>=80) return("A-")
+
+ if(mark>=75) return("B+")
+ if(mark>=70) return("B")
+ if(mark>=65) return("B-")
+
+ if(mark>=60) return("C+")
+ if(mark>=55) return("C")
+ if(mark>=50) return("C-") 
+
+ if(mark>=30) return("D")
+ return("E")
+}
+
+finalMarks = assessmentMarks %>%
+        group_by(courseCode, student) %>% 
+        summarise(final = asGrade(sum(mark * marks/ 100)))
 
 
 
