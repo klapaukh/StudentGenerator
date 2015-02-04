@@ -60,10 +60,10 @@ startYear = 2011:2014  #Our fake students are recent
 
 students = data.table(male = replicate(numStudents, runif(1,0,1) < pMale)) %>%
         mutate(
-               year = ryear(length(male)),
-               student = 300000000 + 1:length(male),
+               yearGroup = ryear(length(male)),
+               studentID = 300000000 + 1:length(male),
                startYear = sample(startYear,length(male),replace=T),
-               major = sample(studentMajors,length(male),replace=T),
+               major = min(sample(studentMajors,length(male),replace=T),2011+yearGroup),
                ability = rtruncnorm(n = length(male), a = 0)   #Each student has an inherent acadmic ability
                 ) %>%
         rowwise %>%
@@ -84,7 +84,7 @@ lapply(courseMajors, function(x) {
        numCourses = rpois(1,meanCoursesPerMajorPerYear)
        if(numCourses == 0)  return(NULL)
        courses = data.table(courseNumber = (year* 100) + 1:numCourses,
-                            year = year,
+                            yearLevel = year,
                             course = x, 
                             title = "AAA",
                             trimester = sample(semesters, numCourses, replace = T),
@@ -178,16 +178,16 @@ sitAssessment <- function(skill, difficulty){
 
 assessmentMarks = apply(students, 1, function(student,courses,assignments){
  skill = student[["ability"]] %>% as.numeric
- id = student[["student"]] %>% as.numeric
- yearLevel = student[["year"]] %>% as.numeric
+ id = student[["studentID"]] %>% as.numeric
+ yearGroup = student[["yearGroup"]] %>% as.numeric
  startYear = student[["startYear"]] %>% as.numeric
 
 
 
  #Each student only does a subset of the courses, and only up to their current year level 
  coursesTaken = courses %>% 
-        filter(year <= yearLevel) %>%
-        group_by(year) %>%
+        filter(yearLevel <= yearGroup) %>%
+        group_by(yearLevel) %>%
         do(sample_n(.,rbinom(1,8,0.9))) %>%
         `[[`("courseCode")
 
@@ -195,7 +195,7 @@ assessmentMarks = apply(students, 1, function(student,courses,assignments){
  assignmentsTaken = assignments %>%
         filter(courseCode %in% coursesTaken) %>%
         mutate(mark = sitAssessment(skill, difficulties),
-               student = id              
+               studentID = id              
                )
 
 return(assignmentsTaken)
@@ -224,7 +224,7 @@ asGrade <- function(mark){
 }
 
 finalMarks = assessmentMarks %>%
-        group_by(courseCode, student) %>% 
+        group_by(courseCode, studentID) %>% 
         summarise(final = asGrade(sum(mark * marks/ 100)))
 
 
