@@ -354,6 +354,11 @@ dbTableResult = finalMarks %>%
 sink("sqlCommands.txt")       
 
 #Write out the course table
+print("DELETE FROM Course;\n")
+print("DELETE FROM Student;\n")
+print("DELETE FROM ClassList;\n")
+print("DELETE FROM Assessment;\n")
+print("DELETE FROM Result;\n")
 
 apply(dbTableCourse, 1, function(row){
          sprintf("INSERT INTO Course (CRN,Title,Year,Trimester) VALUES (%s,\"%s\",%s,%s);\n", 
