@@ -10,7 +10,7 @@ library(lubridate)
 #check if files exist
 files=c("dist.all.last","dist.male.first","dist.female.first")
 if(!all(files %in% list.files())){
-  print("Please download the data files from http://www.census.gov/topics/population/genealogy/data/1990_census/1990_census_namefiles.html\n")
+  stop("Please download the data files from http://www.census.gov/topics/population/genealogy/data/1990_census/1990_census_namefiles.html\n")
 }
 
 #When does stuff happen        
