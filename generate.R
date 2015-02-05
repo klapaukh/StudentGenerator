@@ -260,7 +260,7 @@ asGrade <- function(mark){
 
 finalMarks = assessmentMarks %>%
         group_by(courseCode, studentID) %>% 
-        summarise(final = asGrade(sum(mark * marks/ 100)), Year = yearTaken) %>%
+        summarise(final = asGrade(sum(mark * marks/ 100)), Year = unique(yearTaken)) %>%
         ungroup %>%
         merge(courses,by="courseCode") %>%
         group_by(courseCode, studentID) %>% 
