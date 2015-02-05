@@ -261,7 +261,9 @@ asGrade <- function(mark){
 finalMarks = assessmentMarks %>%
         group_by(courseCode, studentID) %>% 
         summarise(final = asGrade(sum(mark * marks/ 100)), Year = yearTaken) %>%
+        ungroup %>%
         merge(courses,by="courseCode") %>%
+        group_by(courseCode, studentID) %>% 
         mutate(Date = getDate(Year, ifelse(trimester == 1, 20*7,38*7)))
 
 
