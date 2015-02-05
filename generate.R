@@ -346,6 +346,7 @@ dbTableResult = finalMarks %>%
         merge(dbTableAssessment, by=c("AssessmentTitle","CRN")) %>%
         mutate(Result =  ifelse(final < FailMark,"F","P")) %>%
         select(Mark,Result,studentID,AssessmentID) %>%
+        filter(!is.na(Mark)) %>%
         rbind(dbTableResult, use.names=TRUE) %>%
         mutate(ResultID = 1:length(Mark)) 
 
@@ -354,11 +355,11 @@ dbTableResult = finalMarks %>%
 sink("sqlCommands.txt")       
 
 #Write out the course table
-print("DELETE FROM Course;\n")
-print("DELETE FROM Student;\n")
-print("DELETE FROM ClassList;\n")
-print("DELETE FROM Assessment;\n")
-print("DELETE FROM Result;\n")
+cat("DELETE FROM Course;\n")
+cat("DELETE FROM Student;\n")
+cat("DELETE FROM ClassList;\n")
+cat("DELETE FROM Assessment;\n")
+cat("DELETE FROM Result;\n")
 
 apply(dbTableCourse, 1, function(row){
          sprintf("INSERT INTO Course (CRN,Title,Year,Trimester) VALUES (%s,\"%s\",%s,%s);\n", 
@@ -380,7 +381,7 @@ apply(dbTableStudent,1, function(row){
         }) %>% cat
 
 apply(dbTableClassList, 1, function(row){
-         sprintf("INSERT INTO ClassList (StudentID,CRN,ClassListID,Withdrawn,RepeatSatus) VALUES (%s,%s,%s,%s,%s);\n", 
+         sprintf("INSERT INTO ClassList (StudentID,CRN,ClassListID,Withdrawn,RepeatStatus) VALUES (%s,%s,%s,%s,%s);\n", 
                  row[["studentID"]], 
                  row[["CRN"]],
                  row[["ClassListID"]],
@@ -402,7 +403,8 @@ apply(dbTableResult, 1, function(row){
 
 
 apply(dbTableAssessment, 1, function(row) {
-         sprintf("INSERT INTO Assessment (AssessmentID,AssessmentTitle,Date,Weight,Mandatory,MarginalMark,MaxMark,FailMark) VALUES (%s,\"%s\",%s,%s,%s,%s,%s,%s);\n", 
+         sprintf("INSERT INTO Assessment (CRN,AssessmentID,AssessmentTitle,Date,Weight,Mandatory,MarginalMark,MaxMarks,FailMark) VALUES (%s,%s,\"%s\",\"%s\",%s,%s,%s,%s,%s);\n", 
+                 row[["CRN"]], 
                  row[["AssessmentID"]], 
                  row[["AssessmentTitle"]],
                  row[["Date"]],
